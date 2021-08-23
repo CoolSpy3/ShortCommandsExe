@@ -1,6 +1,3 @@
-// OpenGlOverlayTW.cpp : This file contains the 'main' function. Program execution begins and ends there.
-//
-
 #pragma region Includes
 
 #include <Windows.h>
