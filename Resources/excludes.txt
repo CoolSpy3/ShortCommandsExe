@@ -1,0 +1,3 @@
+excludes.txt
+\x86\
+\x64\
