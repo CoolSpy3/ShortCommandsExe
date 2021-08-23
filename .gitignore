@@ -1,5 +1,5 @@
-ShortCommandsExe/Workspace/
-!ShortCommandsExe/Workspace/.gitkeep
+ShortCommandsExe/Workspace/**
+!*.gitkeep
 
 # Prerequisites
 *.d
