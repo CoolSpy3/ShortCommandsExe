@@ -422,3 +422,8 @@ FodyWeavers.xsd
 # JetBrains Rider
 .idea/
 *.sln.iml
+
+!ShortCommandsExe/SDL2-2.0.10/**
+!ShortCommandsExe/SDL2_image-2.0.5/**
+!ShortCommandsExe/SDL2_ttf-2.0.15/**
+!Resources/**
