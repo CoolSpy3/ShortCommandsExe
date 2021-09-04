@@ -17,6 +17,8 @@
 #include <SDL_syswm.h>
 #include <SDL_ttf.h>
 
+#include <sstream>
+
 using namespace std;
 using namespace nlohmann;
 
@@ -559,23 +561,78 @@ void KeyboardHook(DWORD keyCode, char keyChar) {
                 else if (lower(currentCommand).rfind("/set ", 0) == 0) {
                     string command = lower(currentCommand.substr(5));
                     if (command.rfind("pos", 0) == 0) {
-                        if (command.rfind("pos ", 0) == 0) {
-                            if (regex_match(command, regex("pos (x|y) (set|move) ([0-9]+)"))) {
-
+                        smatch match;
+                        if (regex_match(command, match, regex("pos (x|y) (set|move) ([0-9]+)"))) {
+                            bool move = match.str(2) == "move";
+                            bool error = false;
+                            int dist;
+                            try {
+                                dist = stoi(match.str(3));
                             }
-                            else {
-                                TimedText("Usage: /set pos [x|y]", 1500);
+                            catch (...) {
+                                TimedText("Usage: /set pos [x | y] [set | move] <distance>", 1500);
+                                error = true;
+                            }
+                            if (!error) {
+                                if (match.str(1) == "x") {
+                                    if (move) {
+                                        state["posX"] = sint("posX") + dist;
+                                    }
+                                    else {
+                                        state["posX"] = dist;
+                                    }
+                                }
+                                else {
+                                    if (move) {
+                                        state["posY"] = sint("posY") + dist;
+                                    }
+                                    else {
+                                        state["posY"] = dist;
+                                    }
+                                }
                             }
                         }
                         else {
-                            TimedText("Usage: /set pos [x|y]", 1500);
+                            TimedText("Usage: /set pos [x | y] [set | move] <distance>", 1500);
                         }
                     }
                     else if (command.rfind("bg", 0) == 0) {
-
+                        smatch match;
+                        if (regex_match(command, match, regex("bg #?([0-9a-f]{6})"))) {
+                            stringstream hexStream;
+                            hexStream << hex << match.str(1);
+                            unsigned int rgb;
+                            hexStream >> rgb;
+                            int blue = rgb & 255;
+                            int green = (rgb >> 8) & 255;
+                            int red = (rgb >> 16) & 255;
+                            state["BackgroundColor"][0] = red;
+                            state["BackgroundColor"][1] = green;
+                            state["BackgroundColor"][2] = blue;
+                        }
+                        else {
+                            TimedText("Usage: /set bg <hex rgb color>", 1500);
+                        }
                     }
                     else if (command.rfind("fg", 0) == 0) {
-
+                        smatch match;
+                        if (regex_match(command, match, regex("fg #?([0-9a-f]{8})"))) {
+                            stringstream hexStream;
+                            hexStream << hex << match.str(1);
+                            unsigned int rgb;
+                            hexStream >> rgb;
+                            int blue = rgb & 255;
+                            int green = (rgb >> 8) & 255;
+                            int red = (rgb >> 16) & 255;
+                            int alpha = (rgb >> 24) & 255;
+                            state["TextColor"][0] = red;
+                            state["TextColor"][1] = green;
+                            state["TextColor"][2] = blue;
+                            state["TextColor"][3] = alpha;
+                        }
+                        else {
+                            TimedText("Usage: /set bg <hex rgb color>", 1500);
+                        }
                     }
                     else if (command.rfind("border", 0) == 0) {
 
