@@ -1,4 +1,5 @@
 #pragma region Includes
+#pragma warning ( push, 0 )
 
 #include <Windows.h>
 
@@ -22,6 +23,7 @@
 using namespace std;
 using namespace nlohmann;
 
+#pragma warning ( pop )
 #pragma endregion
 
 #pragma region Vars
@@ -47,6 +49,8 @@ void PostRender();
 
 void DestroySDLWindow();
 
+void LoseWindowFocus();
+
 void Initialize();
 
 void Shutdown();
@@ -58,6 +62,10 @@ void ClearText();
 void AsyncClearText(UINT timerId, UINT msg, DWORD_PTR user, DWORD_PTR dw1, DWORD_PTR dw2);
 
 void TimedText(const char* text, UINT timeout); void Type(const char* text);
+
+void IgnoreHook(bool ignore);
+
+void Type(const char* text);
 
 void Type(WORD key);
 
@@ -143,6 +151,18 @@ void DestroySDLWindow() {
     renderer = nullptr;
     SDL_DestroyWindow(window);
     window = nullptr;
+}
+
+void LoseWindowFocusEventProc(HWINEVENTHOOK hook, DWORD evnt, HWND hwnd, LONG idObject, LONG idChild, DWORD idEventThread, DWORD dwmsEventTime) {
+    UnhookWinEvent(hook);
+    DestroySDLWindow();
+    IgnoreHook(false);
+}
+
+void LoseWindowFocus() {
+    CreateSDLWindow();
+    IgnoreHook(true);
+    SetWinEventHook(EVENT_OBJECT_FOCUS, EVENT_OBJECT_FOCUS, NULL, (WINEVENTPROC)LoseWindowFocusEventProc, 0, 0, WINEVENT_OUTOFCONTEXT);
 }
 
 TTF_Font* font;
@@ -270,6 +290,7 @@ LRESULT LowLevelHookProc(int nCode, WPARAM wParam, LPARAM lParam) {
             }
             WORD asciiText[2];
             int asciiResult = ToAscii(key->vkCode, key->scanCode, keyboardState, asciiText, 0);
+            asciiText[0] &= 0xFF;
             if (asciiText[0] < 0x20 || asciiText[0] > 0x7E) {
                 asciiResult = 0;
             }
@@ -292,6 +313,10 @@ LRESULT LowLevelHookProc(int nCode, WPARAM wParam, LPARAM lParam) {
 
 void cancelEvent() { shouldCancelEvent = true; }
 
+void IgnoreHook(bool ignore) {
+    ignoreHook = ignore;
+}
+
 void Type(const char* text) {
     BYTE keyboardState[256] = { 0 };
     GetKeyState(0);
@@ -306,7 +331,7 @@ void Type(const char* text) {
     SetAndReset(VK_LCONTROL);
     SetAndReset(VK_RCONTROL);
 #undef SetAndReset
-    for (int i = 0; i < strlen(text); i++) {
+    for (size_t i = 0; i < strlen(text); i++) {
         vector<INPUT> tempReset;
         SHORT translatedKey = VkKeyScanA(text[i]);
         WORD vKey = translatedKey & 0xFF;
@@ -318,34 +343,31 @@ void Type(const char* text) {
         INPUT* keyInputs = CreateInput(vKey);
         inputs.push_back(keyInputs[0]);
         inputs.push_back(keyInputs[1]);
-        for (int i = 0; i < tempReset.size(); i++) {
+        for (size_t i = 0; i < tempReset.size(); i++) {
             inputs.push_back(tempReset[i]);
         }
     }
-    for (int i = 0; i < reset.size(); i++) {
+    for (size_t i = 0; i < reset.size(); i++) {
         inputs.push_back(reset[i]);
     }
-    ignoreHook = true;
-    SendInput(inputs.size(), &inputs[0], sizeof(INPUT));
-    ignoreHook = false;
+    IgnoreHook(true);
+    SendInput((UINT)inputs.size(), &inputs[0], sizeof(INPUT));
+    IgnoreHook(false);
 }
 
 void Type(WORD key) {
-    ignoreHook = true;
+    IgnoreHook(true);
     SendInput(2, CreateInput(key), sizeof(INPUT));
-    ignoreHook = false;
+    IgnoreHook(false);
 }
 
 INPUT* CreateInput(WORD vKey) {
-    WORD scanCode = MapVirtualKey(vKey, MAPVK_VK_TO_VSC);
-    INPUT inputs[2];
+    static INPUT inputs[2] = {};
+    ZeroMemory(inputs, sizeof(inputs));
     inputs[0].type = INPUT_KEYBOARD;
     inputs[0].ki.wVk = vKey;
-    inputs[0].ki.wScan = scanCode;
-    inputs[0].ki.dwFlags = 0;
     inputs[1].type = INPUT_KEYBOARD;
     inputs[1].ki.wVk = vKey;
-    inputs[1].ki.wScan = scanCode;
     inputs[1].ki.dwFlags = KEYEVENTF_KEYUP;
     return inputs;
 }
@@ -403,9 +425,7 @@ int main(int argc, char* argv[])
     Initialize();
     LoadFont();
 
-    // Prevents window focus
-    CreateSDLWindow();
-    DestroySDLWindow();
+    LoseWindowFocus();
 
     HANDLE clearTextEvent = CreateEvent(NULL, TRUE, FALSE, CLEAR_TEXT_EVENT_NAME);
     
