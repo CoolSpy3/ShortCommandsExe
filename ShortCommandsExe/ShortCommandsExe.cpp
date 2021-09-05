@@ -49,6 +49,8 @@ void ShutdownSDL();
 
 bool CreateSDLWindow();
 
+void SetWindowScreen(int x, int y);
+
 void PreRender();
 
 void PostRender();
@@ -89,8 +91,10 @@ void SaveState();
 
 #pragma region SDL MAIN
 
+#define IgnoreTransparentBg
 //Credit: https://stackoverflow.com/questions/23048993/sdl-fullscreen-translucent-background
 void ConfigureWindow(SDL_Window* window) {
+#ifndef IgnoreTransparentBg
     SDL_SysWMinfo wmInfo;
     SDL_GetVersion(&wmInfo.version);
     SDL_GetWindowWMInfo(window, &wmInfo);
@@ -99,7 +103,8 @@ void ConfigureWindow(SDL_Window* window) {
     //UpdateLayeredWindow(hWnd, NULL, NULL, NULL, NULL, NULL, NULL, new BLENDFUNCTION{AC_SRC_OVER, NULL, 255, AC_SRC_ALPHA}, ULW_ALPHA);
     //SetLayeredWindowAttributes(hWnd, NULL, 180, LWA_ALPHA);
     SetLayeredWindowAttributes(hWnd, RGB(255, 0, 255), 0, LWA_COLORKEY);
-    SetWindowPos(hWnd, (HWND)-2, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE);
+    SetWindowPos(hWnd, HWND_TOPMOST, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE);
+#endif
 }
 
 void error(const char* error) {
@@ -132,7 +137,7 @@ SDL_Renderer* renderer = nullptr;
 bool blockWindowDestroy = false;
 
 bool CreateSDLWindow() {
-    window = SDL_CreateWindow("ShortCommands Overlay", SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED, GetSystemMetrics(SM_CXSCREEN), GetSystemMetrics(SM_CYSCREEN), SDL_WINDOW_BORDERLESS | SDL_WINDOW_ALWAYS_ON_TOP | SDL_WINDOW_OPENGL);
+    window = SDL_CreateWindow("ShortCommands Overlay", SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED, GetSystemMetrics(SM_CXSCREEN), GetSystemMetrics(SM_CYSCREEN), SDL_WINDOW_BORDERLESS | SDL_WINDOW_ALWAYS_ON_TOP);
     ConfigureWindow(window);
 
     renderer = SDL_CreateRenderer(window, -1, SDL_RENDERER_ACCELERATED);
@@ -146,6 +151,14 @@ bool CreateSDLWindow() {
     PreRender();
     PostRender();
     return true;
+}
+
+void SetWindowPos(SDL_Rect pos) {
+    SDL_SysWMinfo wmInfo;
+    SDL_GetVersion(&wmInfo.version);
+    SDL_GetWindowWMInfo(window, &wmInfo);
+    HWND hWnd = wmInfo.info.win.window;
+    SetWindowPos(hWnd, NULL, pos.x, pos.y, pos.w, pos.h, SWP_NOOWNERZORDER);
 }
 
 void PreRender() {
@@ -183,6 +196,7 @@ void LoseWindowFocusEventProc(HWINEVENTHOOK hook, DWORD evnt, HWND hwnd, LONG id
 
 void LoseWindowFocus() {
     CreateSDLWindow();
+    SetWindowPos({ 0, 0, 0, 0 });
     IgnoreHook(true);
     SetWinEventHook(EVENT_OBJECT_FOCUS, EVENT_OBJECT_FOCUS, NULL, (WINEVENTPROC)LoseWindowFocusEventProc, 0, 0, WINEVENT_OUTOFCONTEXT);
 }
@@ -544,6 +558,8 @@ void RenderText(const char* text) {
     if (strlen(text) == 0) {
         text = " ";
     }
+    int x = sint("posX");
+    int y = sint("posY");
     PreRender();
     SDL_Surface* surface = TTF_RenderText_Blended(font, text, { scolor("TextColor", 0), scolor("TextColor", 1), scolor("TextColor", 2), scolor("TextColor", 3) });
     SDL_Texture* texture = SDL_CreateTextureFromSurface(renderer, surface);
@@ -551,9 +567,11 @@ void RenderText(const char* text) {
     int w, h;
     SDL_QueryTexture(texture, NULL, NULL, &w, &h);
     SDL_SetRenderDrawColor(renderer, scolor("BackgroundColor", 0), scolor("BackgroundColor", 1), scolor("BackgroundColor", 2), 255);
-    SDL_Rect bgRect{ sint("posX"), sint("posY"), w + 2 * sint("border"), h + 2 * sint("border") };
+    SDL_Rect windowRect{ x, y, w + 2 * sint("border"), h + 2 * sint("border") };
+    SetWindowPos(windowRect);
+    SDL_Rect bgRect{ 0, 0, w + 2 * sint("border"), h + 2 * sint("border") };
     SDL_RenderFillRect(renderer, &bgRect);
-    SDL_Rect textRect{ sint("posX") + sint("border"), sint("posY") + sint("border"), w, h };
+    SDL_Rect textRect{sint("border"), sint("border"), w, h };
     SDL_RenderCopy(renderer, texture, NULL, &textRect);
     PostRender();
 }
@@ -914,7 +932,7 @@ void KeyboardHook(DWORD keyCode, char keyChar) {
                         }
                     }
                     else if (lower(currentCommand) == "/command") {
-                        TimedText("Usage: /set [add | remove | clear]", timeout);
+                        TimedText("Usage: /command [add | remove | clear]", timeout);
                     }
                     else if (lower(currentCommand).rfind("/command ", 0) == 0) {
                         string command = lower(currentCommand.substr(9));
@@ -954,6 +972,9 @@ void KeyboardHook(DWORD keyCode, char keyChar) {
                             currentState = CurrentState::CONFIRM_CLEAR;
                             RenderText("Confirm Clear? [Y/N]");
                         }
+                        else {
+                            TimedText("Usage: /command [add | remove | clear]", timeout);
+                        }
                     }
                     else if (lower(currentCommand).rfind("/import", 0) == 0 && lower(currentCommand).rfind("/import ", 0) != 0) {
                         currentState = CurrentState::CONFIRM_IMPORT;
@@ -972,7 +993,8 @@ void KeyboardHook(DWORD keyCode, char keyChar) {
                             }
                         }
                         if (!text.empty()) {
-                            Type(text.c_str());
+                            Type(text.substr(1).c_str());
+                            Type(VK_RETURN);
                         }
                     }
                     DestroySDLWindow();
