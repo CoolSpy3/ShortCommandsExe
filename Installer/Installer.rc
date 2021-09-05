@@ -1,0 +1,91 @@
+// Microsoft Visual C++ generated resource script.
+//
+
+#include "resource.h"
+
+#define APSTUDIO_READONLY_SYMBOLS
+/////////////////////////////////////////////////////////////////////////////
+//
+// Generated from the TEXTINCLUDE 2 resource.
+//
+#include "winres.h"
+
+/////////////////////////////////////////////////////////////////////////////
+#undef APSTUDIO_READONLY_SYMBOLS
+
+/////////////////////////////////////////////////////////////////////////////
+// English (United States) resources
+
+#if !defined(AFX_RESOURCE_DLL) || defined(AFX_TARG_ENU)
+LANGUAGE 9, 1
+
+#ifdef APSTUDIO_INVOKED
+/////////////////////////////////////////////////////////////////////////////
+//
+// TEXTINCLUDE
+//
+
+1 TEXTINCLUDE
+BEGIN
+    "resource.h\0"
+END
+
+2 TEXTINCLUDE  
+BEGIN
+    "#include ""winres.h""\r\n"
+    "\0"
+END
+
+3 TEXTINCLUDE  
+BEGIN
+    "\r\n"
+    "\0"
+END
+
+#endif    // APSTUDIO_INVOKED
+
+#endif    // English (United States) resources
+/////////////////////////////////////////////////////////////////////////////
+
+FONT RCDATA "../Resources/Minecraft.ttf"
+#ifdef _M_AMD64
+LIBFREETYPE RCDATA "../Resources/x64/libfreetype-6.dll"
+LIBJPEG RCDATA "../Resources/x64/libjpeg-9.dll"
+LIBPNG RCDATA "../Resources/x64/libpng16-16.dll"
+LIBTIFF RCDATA "../Resources/x64/libtiff-5.dll"
+LIBWEBP RCDATA "../Resources/x64/libwebp-7.dll"
+SDL2 RCDATA "../Resources/x64/SDL2.dll"
+SDL2Image RCDATA "../Resources/x64/SDL2_image.dll"
+SDL2TTF RCDATA "../Resources/x64/SDL2_ttf.dll"
+ZLIB RCDATA "../Resources/x64/zlib1.dll"
+#ifdef _DEBUG
+EXE RCDATA "../x64/Debug/ShortCommandsExe.exe"
+#else
+EXE RCDATA "../x64/Release/ShortCommandsExe.exe"
+#endif
+#else
+LIBFREETYPE RCDATA "../Resources/x86/libfreetype-6.dll"
+LIBJPEG RCDATA "../Resources/x86/libjpeg-9.dll"
+LIBPNG RCDATA "../Resources/x86/libpng16-16.dll"
+LIBTIFF RCDATA "../Resources/x86/libtiff-5.dll"
+LIBWEBP RCDATA "../Resources/x86/libwebp-7.dll"
+SDL2 RCDATA "../Resources/x86/SDL2.dll"
+SDL2Image RCDATA "../Resources/x86/SDL2_image.dll"
+SDL2TTF RCDATA "../Resources/x86/SDL2_ttf.dll"
+ZLIB RCDATA "../Resources/x86/zlib1.dll"
+#ifdef _DEBUG
+EXE RCDATA "../Debug/ShortCommandsExe.exe"
+#else
+EXE RCDATA "../Release/ShortCommandsExe.exe"
+#endif
+#endif
+
+#ifndef APSTUDIO_INVOKED
+/////////////////////////////////////////////////////////////////////////////
+//
+// Generated from the TEXTINCLUDE 3 resource.
+//
+
+
+/////////////////////////////////////////////////////////////////////////////
+#endif    // not APSTUDIO_INVOKED

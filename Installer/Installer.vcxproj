@@ -21,10 +21,9 @@
   <PropertyGroup Label="Globals">
     <VCProjectVersion>16.0</VCProjectVersion>
     <Keyword>Win32Proj</Keyword>
-    <ProjectGuid>{bd05c7ca-df05-49de-ad42-dca24b19b756}</ProjectGuid>
-    <RootNamespace>ShortCommandsExe</RootNamespace>
+    <ProjectGuid>{5ddad62d-9df6-49b6-9c6a-05efb40d7455}</ProjectGuid>
+    <RootNamespace>Installer</RootNamespace>
     <WindowsTargetPlatformVersion>10.0</WindowsTargetPlatformVersion>
-    <ProjectName>ShortCommandsExe</ProjectName>
   </PropertyGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.Default.props" />
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'" Label="Configuration">
@@ -52,7 +51,6 @@
     <PlatformToolset>v142</PlatformToolset>
     <WholeProgramOptimization>true</WholeProgramOptimization>
     <CharacterSet>Unicode</CharacterSet>
-    <CLRSupport>false</CLRSupport>
   </PropertyGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.props" />
   <ImportGroup Label="ExtensionSettings">
@@ -90,18 +88,14 @@
       <SDLCheck>true</SDLCheck>
       <PreprocessorDefinitions>WIN32;_DEBUG;_CONSOLE;%(PreprocessorDefinitions)</PreprocessorDefinitions>
       <ConformanceMode>true</ConformanceMode>
-      <AdditionalIncludeDirectories>$(ProjectDir)SDL2-2.0.10\include;$(ProjectDir)SDL2_image-2.0.5\include;$(ProjectDir)SDL2_ttf-2.0.15\include;$(ProjectDir)json;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
     </ClCompile>
     <Link>
-      <SubSystem>Windows</SubSystem>
+      <SubSystem>Console</SubSystem>
       <GenerateDebugInformation>true</GenerateDebugInformation>
-      <AdditionalDependencies>SDL2.lib;SDL2_image.lib;SDL2_ttf.lib;%(AdditionalDependencies)</AdditionalDependencies>
-      <AdditionalLibraryDirectories>$(ProjectDir)SDL2-2.0.10\lib\x86;$(ProjectDir)SDL2_image-2.0.5\lib\x86;$(ProjectDir)SDL2_ttf-2.0.15\lib\x86;%(AdditionalLibraryDirectories)</AdditionalLibraryDirectories>
     </Link>
-    <PostBuildEvent>
-      <Command>xcopy $(SolutionDir)Resources $(ProjectDir)Workspace /S /C /Y /EXCLUDE:$(SolutionDir)Resources\excludes.txt
-xcopy $(SolutionDir)Resources\x64 $(SolutionDir)Debug /S /C /Y</Command>
-    </PostBuildEvent>
+    <ResourceCompile>
+      <AdditionalOptions>/D "_DEBUG" %(AdditionalOptions)</AdditionalOptions>
+    </ResourceCompile>
   </ItemDefinitionGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">
     <ClCompile>
@@ -111,20 +105,13 @@ xcopy $(SolutionDir)Resources\x64 $(SolutionDir)Debug /S /C /Y</Command>
       <SDLCheck>true</SDLCheck>
       <PreprocessorDefinitions>WIN32;NDEBUG;_CONSOLE;%(PreprocessorDefinitions)</PreprocessorDefinitions>
       <ConformanceMode>true</ConformanceMode>
-      <AdditionalIncludeDirectories>$(ProjectDir)SDL2-2.0.10\include;$(ProjectDir)SDL2_image-2.0.5\include;$(ProjectDir)SDL2_ttf-2.0.15\include;$(ProjectDir)json;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
     </ClCompile>
     <Link>
-      <SubSystem>Windows</SubSystem>
+      <SubSystem>Console</SubSystem>
       <EnableCOMDATFolding>true</EnableCOMDATFolding>
       <OptimizeReferences>true</OptimizeReferences>
       <GenerateDebugInformation>true</GenerateDebugInformation>
-      <AdditionalLibraryDirectories>$(ProjectDir)SDL2-2.0.10\lib\x86;$(ProjectDir)SDL2_image-2.0.5\lib\x86;$(ProjectDir)SDL2_ttf-2.0.15\lib\x86;%(AdditionalLibraryDirectories)</AdditionalLibraryDirectories>
-      <AdditionalDependencies>SDL2.lib;SDL2_image.lib;SDL2_ttf.lib;%(AdditionalDependencies)</AdditionalDependencies>
     </Link>
-    <PostBuildEvent>
-      <Command>xcopy $(SolutionDir)Resources $(ProjectDir)Workspace /S /C /Y /EXCLUDE:$(SolutionDir)Resources\excludes.txt
-xcopy $(SolutionDir)Resources\x86 $(SolutionDir)Release /S /C /Y</Command>
-    </PostBuildEvent>
   </ItemDefinitionGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">
     <ClCompile>
@@ -132,18 +119,14 @@ xcopy $(SolutionDir)Resources\x86 $(SolutionDir)Release /S /C /Y</Command>
       <SDLCheck>true</SDLCheck>
       <PreprocessorDefinitions>_DEBUG;_CONSOLE;%(PreprocessorDefinitions)</PreprocessorDefinitions>
       <ConformanceMode>true</ConformanceMode>
-      <AdditionalIncludeDirectories>$(ProjectDir)SDL2-2.0.10\include;$(ProjectDir)SDL2_image-2.0.5\include;$(ProjectDir)SDL2_ttf-2.0.15\include;$(ProjectDir)json;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
     </ClCompile>
     <Link>
-      <SubSystem>Windows</SubSystem>
+      <SubSystem>Console</SubSystem>
       <GenerateDebugInformation>true</GenerateDebugInformation>
-      <AdditionalLibraryDirectories>$(ProjectDir)SDL2-2.0.10\lib\x64;$(ProjectDir)SDL2_image-2.0.5\lib\x64;$(ProjectDir)SDL2_ttf-2.0.15\lib\x64;%(AdditionalLibraryDirectories)</AdditionalLibraryDirectories>
-      <AdditionalDependencies>SDL2.lib;SDL2_image.lib;SDL2_ttf.lib;%(AdditionalDependencies)</AdditionalDependencies>
     </Link>
-    <PostBuildEvent>
-      <Command>xcopy $(SolutionDir)Resources $(ProjectDir)Workspace /S /C /Y /EXCLUDE:$(SolutionDir)Resources\excludes.txt
-xcopy $(SolutionDir)Resources\x64 $(SolutionDir)x64\Debug /S /C /Y</Command>
-    </PostBuildEvent>
+    <ResourceCompile>
+      <AdditionalOptions>/D "_M_AMD64" /D "_DEBUG" %(AdditionalOptions)</AdditionalOptions>
+    </ResourceCompile>
   </ItemDefinitionGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
     <ClCompile>
@@ -153,24 +136,25 @@ xcopy $(SolutionDir)Resources\x64 $(SolutionDir)x64\Debug /S /C /Y</Command>
       <SDLCheck>true</SDLCheck>
       <PreprocessorDefinitions>NDEBUG;_CONSOLE;%(PreprocessorDefinitions)</PreprocessorDefinitions>
       <ConformanceMode>true</ConformanceMode>
-      <AdditionalIncludeDirectories>$(ProjectDir)SDL2-2.0.10\include;$(ProjectDir)SDL2_image-2.0.5\include;$(ProjectDir)SDL2_ttf-2.0.15\include;$(ProjectDir)json;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
-      <Optimization>MaxSpeed</Optimization>
     </ClCompile>
     <Link>
-      <SubSystem>Windows</SubSystem>
+      <SubSystem>Console</SubSystem>
       <EnableCOMDATFolding>true</EnableCOMDATFolding>
       <OptimizeReferences>true</OptimizeReferences>
       <GenerateDebugInformation>true</GenerateDebugInformation>
-      <AdditionalLibraryDirectories>$(ProjectDir)SDL2-2.0.10\lib\x64;$(ProjectDir)SDL2_image-2.0.5\lib\x64;$(ProjectDir)SDL2_ttf-2.0.15\lib\x64;%(AdditionalLibraryDirectories)</AdditionalLibraryDirectories>
-      <AdditionalDependencies>SDL2.lib;SDL2_image.lib;SDL2_ttf.lib;%(AdditionalDependencies)</AdditionalDependencies>
     </Link>
-    <PostBuildEvent>
-      <Command>xcopy $(SolutionDir)Resources $(ProjectDir)Workspace /S /C /Y /EXCLUDE:$(SolutionDir)Resources\excludes.txt
-xcopy $(SolutionDir)Resources\x64 $(SolutionDir)x64\Release /S /C /Y</Command>
-    </PostBuildEvent>
+    <ResourceCompile>
+      <AdditionalOptions>/D "_M_AMD64" %(AdditionalOptions)</AdditionalOptions>
+    </ResourceCompile>
   </ItemDefinitionGroup>
   <ItemGroup>
-    <ClCompile Include="ShortCommandsExe.cpp" />
+    <ClCompile Include="Installer.cpp" />
+  </ItemGroup>
+  <ItemGroup>
+    <ClInclude Include="resource.h" />
+  </ItemGroup>
+  <ItemGroup>
+    <ResourceCompile Include="Installer.rc" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
   <ImportGroup Label="ExtensionTargets">

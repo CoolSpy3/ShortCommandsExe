@@ -23,6 +23,7 @@
 
 #include <shlobj.h>
 #include <sstream>
+#include <tchar.h>
 
 using namespace std;
 using namespace nlohmann;
@@ -98,7 +99,7 @@ void ConfigureWindow(SDL_Window* window) {
     //UpdateLayeredWindow(hWnd, NULL, NULL, NULL, NULL, NULL, NULL, new BLENDFUNCTION{AC_SRC_OVER, NULL, 255, AC_SRC_ALPHA}, ULW_ALPHA);
     //SetLayeredWindowAttributes(hWnd, NULL, 180, LWA_ALPHA);
     SetLayeredWindowAttributes(hWnd, RGB(255, 0, 255), 0, LWA_COLORKEY);
-    SetWindowPos(hWnd, HWND_TOPMOST, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE);
+    SetWindowPos(hWnd, (HWND)-2, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE);
 }
 
 void error(const char* error) {
@@ -131,7 +132,7 @@ SDL_Renderer* renderer = nullptr;
 bool blockWindowDestroy = false;
 
 bool CreateSDLWindow() {
-    window = SDL_CreateWindow("ShortCommands Overlay", SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED, GetSystemMetrics(SM_CXSCREEN), GetSystemMetrics(SM_CYSCREEN), SDL_WINDOW_BORDERLESS | SDL_WINDOW_ALWAYS_ON_TOP);
+    window = SDL_CreateWindow("ShortCommands Overlay", SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED, GetSystemMetrics(SM_CXSCREEN), GetSystemMetrics(SM_CYSCREEN), SDL_WINDOW_BORDERLESS | SDL_WINDOW_ALWAYS_ON_TOP | SDL_WINDOW_OPENGL);
     ConfigureWindow(window);
 
     renderer = SDL_CreateRenderer(window, -1, SDL_RENDERER_ACCELERATED);
@@ -435,7 +436,7 @@ void SaveState() {
 
 #pragma endregion
 
-int main(int argc, char* argv[])
+int CALLBACK WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR pCmdLine, int nCmdShow)
 {
     HANDLE runningMutex = CreateMutex(NULL, TRUE, MUTEX_NAME);
     if (runningMutex == NULL || runningMutex == INVALID_HANDLE_VALUE || GetLastError() == ERROR_ALREADY_EXISTS) {
@@ -445,6 +446,18 @@ int main(int argc, char* argv[])
         cerr << "Could not aquire running mutex! Is the program already running?" << endl;
         return 1;
     }
+
+#ifndef _DEBUG
+    PWSTR path = NULL;
+    SHGetKnownFolderPath(FOLDERID_RoamingAppData, 0, 0, &path);
+    wstringstream ss;
+    ss << path << TEXT("\\shortcommands");
+    wstring wspath = ss.str();
+    const wchar_t* wpath = wspath.c_str();
+    SetCurrentDirectoryW(wpath);
+    CoTaskMemFree(static_cast<void*>(path));
+#endif
+
     if (!InitSDL()) {
         return 1;
     }
@@ -605,7 +618,7 @@ bool IsLunarRunning() {
         }
     }
 
-    return true;
+    return false;
 }
 
 #endif
@@ -636,7 +649,7 @@ char GetOpenChar() {
     int asciiResult = ToAscii(vk, MapVirtualKeyA(vk, MAPVK_VK_TO_VSC), keyboardState, asciiText, 0);
     asciiText[0] &= 0xFF;
     if (asciiResult != 1 || asciiText[0] < 0x20 || asciiText[0] > 0x7E) {
-        asciiText[0] == NULL;
+        asciiText[0] = NULL;
     }
     return (char)asciiText[0];
 }
