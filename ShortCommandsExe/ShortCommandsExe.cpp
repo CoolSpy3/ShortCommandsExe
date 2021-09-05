@@ -3,12 +3,15 @@
 
 #include <Windows.h>
 
+#include <codecvt>
 #include <iostream>
+
 #include <nlohmann/json.hpp>
 
 #include <fstream>
 #pragma comment( lib, "Winmm.lib" )
 
+#include <locale>
 #include <psapi.h>
 #include <regex>
 
@@ -18,6 +21,7 @@
 #include <SDL_syswm.h>
 #include <SDL_ttf.h>
 
+#include <shlobj.h>
 #include <sstream>
 
 using namespace std;
@@ -30,6 +34,7 @@ using namespace nlohmann;
 
 #define MUTEX_NAME TEXT("ShortCommandsEXE_Running")
 #define CLEAR_TEXT_EVENT_NAME TEXT("ShortCommandsEXE_ClearText")
+#define QUIT_EVENT_NAME TEXT("ShortCommandsEXE_Quit")
 
 #pragma endregion
 
@@ -48,6 +53,10 @@ void PreRender();
 void PostRender();
 
 void DestroySDLWindow();
+
+void AllowWindowDestroy();
+
+void BlockWindowDestroy();
 
 void LoseWindowFocus();
 
@@ -119,6 +128,7 @@ void ShutdownSDL() {
 
 SDL_Window* window = nullptr;
 SDL_Renderer* renderer = nullptr;
+bool blockWindowDestroy = false;
 
 bool CreateSDLWindow() {
     window = SDL_CreateWindow("ShortCommands Overlay", SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED, GetSystemMetrics(SM_CXSCREEN), GetSystemMetrics(SM_CYSCREEN), SDL_WINDOW_BORDERLESS | SDL_WINDOW_ALWAYS_ON_TOP);
@@ -147,10 +157,21 @@ void PostRender() {
 }
 
 void DestroySDLWindow() {
+    if (blockWindowDestroy) {
+        return;
+    }
     SDL_DestroyRenderer(renderer);
     renderer = nullptr;
     SDL_DestroyWindow(window);
     window = nullptr;
+}
+
+void AllowWindowDestroy() {
+    blockWindowDestroy = false;
+}
+
+void BlockWindowDestroy() {
+    blockWindowDestroy = true;
 }
 
 void LoseWindowFocusEventProc(HWINEVENTHOOK hook, DWORD evnt, HWND hwnd, LONG idObject, LONG idChild, DWORD idEventThread, DWORD dwmsEventTime) {
@@ -169,7 +190,6 @@ TTF_Font* font;
 
 void LoadFont() {
     font = TTF_OpenFont("Minecraft.ttf", 30);
-    cout << SDL_GetError() << endl;
     TTF_SetFontStyle(font, TTF_STYLE_NORMAL);
 }
 
@@ -178,7 +198,10 @@ bool hasTimer = false;
 
 void RenderText(const char* text);
 
-void ClearText() { DestroySDLWindow(); }
+void ClearText() {
+    AllowWindowDestroy();
+    DestroySDLWindow();
+}
 
 void AsyncClearText(UINT timerId, UINT msg, DWORD_PTR user, DWORD_PTR dw1, DWORD_PTR dw2) {
     HANDLE clearTextEvent = OpenEvent(EVENT_MODIFY_STATE, FALSE, CLEAR_TEXT_EVENT_NAME);
@@ -294,6 +317,7 @@ LRESULT LowLevelHookProc(int nCode, WPARAM wParam, LPARAM lParam) {
             if (asciiText[0] < 0x20 || asciiText[0] > 0x7E) {
                 asciiResult = 0;
             }
+            AllowWindowDestroy();
             KeyboardHook(key->vkCode, asciiResult == 1 ? (char)asciiText[0] : NULL);
             if (shouldCancelEvent) {
                 shouldCancelEvent = false;
@@ -385,10 +409,11 @@ void LoadState() {
             { "border", 10 },
             { "posX", 10 },
             { "posY", 100 },
-            { "trigger", VK_OEM_5 },
+            { "trigger", VK_OEM_2 },
             { "triggerFlags", 0 },
             { "TextColor", { 255, 255, 255, 255 } },
             { "BackgroundColor", { 30, 30, 30 } },
+            { "copyOpenChar", true },
             { "commands", {} }
         };
         SaveState();
@@ -403,8 +428,10 @@ void SaveState() {
     outputStream << state;
 }
 
-#define sint(name) state[name].get<int>()
+#define sbool(name) state[name].get<bool>()
 #define sdword(name) state[name].get<DWORD>()
+#define sint(name) state[name].get<int>()
+#define scolor(color, pos) state[color][pos].get<UINT8>()
 
 #pragma endregion
 
@@ -428,6 +455,7 @@ int main(int argc, char* argv[])
     LoseWindowFocus();
 
     HANDLE clearTextEvent = CreateEvent(NULL, TRUE, FALSE, CLEAR_TEXT_EVENT_NAME);
+    HANDLE quitEvent = CreateEvent(NULL, TRUE, FALSE, QUIT_EVENT_NAME);
     
     lshift = GetAsyncKeyState(VK_LSHIFT);
     rshift = GetAsyncKeyState(VK_RSHIFT);
@@ -435,13 +463,18 @@ int main(int argc, char* argv[])
     rctrl = GetAsyncKeyState(VK_RCONTROL);
     HHOOK hook = SetWindowsHookEx(WH_KEYBOARD_LL, (HOOKPROC)LowLevelHookProc, NULL, NULL);
 
+    HANDLE events[2] = { clearTextEvent, quitEvent };
+
     MSG msg;
     while (true) {
-        MsgWaitForMultipleObjects(1, &clearTextEvent, FALSE, INFINITE, QS_ALLINPUT | QS_ALLPOSTMESSAGE);
+        MsgWaitForMultipleObjects(2, events, FALSE, INFINITE, QS_ALLINPUT | QS_ALLPOSTMESSAGE);
         if (WaitForSingleObject(clearTextEvent, 0) == WAIT_OBJECT_0) {
             hasTimer = false;
             ResetEvent(clearTextEvent);
             ClearText();
+        }
+        if (WaitForSingleObject(quitEvent, 0) == WAIT_OBJECT_0) {
+            break;
         }
         while (PeekMessage(&msg, NULL, 0, 0, PM_REMOVE)) {
             if (msg.message == WM_QUIT) {
@@ -454,10 +487,13 @@ int main(int argc, char* argv[])
         }
     }
 
+    CloseHandle(quitEvent);
+    quitEvent = nullptr;
     CloseHandle(clearTextEvent);
     clearTextEvent = nullptr;
 
     UnhookWindowsHookEx(hook);
+    hook = nullptr;
 
     Shutdown();
 
@@ -474,9 +510,19 @@ int main(int argc, char* argv[])
 
 #pragma region Logic
 
+int timeout = 2000;
+
+enum CurrentState {
+    DEFAULT, CONFIRM_CLEAR, CONFIRM_IMPORT, CONFIRM_RESET, COPY_OPEN_CHAR, SET_OPEN_CHAR, QUIT
+};
+
+CurrentState currentState = CurrentState::DEFAULT;
+
 void RenderText(const char* text) {
+    BlockWindowDestroy();
     if (hasTimer) {
         timeKillEvent(timerId);
+        hasTimer = false;
     }
     if (window == nullptr) {
         CreateSDLWindow();
@@ -485,12 +531,12 @@ void RenderText(const char* text) {
         text = " ";
     }
     PreRender();
-    SDL_Surface* surface = TTF_RenderText_Blended(font, text, { 255, 255, 255, 255 });
+    SDL_Surface* surface = TTF_RenderText_Blended(font, text, { scolor("TextColor", 0), scolor("TextColor", 1), scolor("TextColor", 2), scolor("TextColor", 3) });
     SDL_Texture* texture = SDL_CreateTextureFromSurface(renderer, surface);
     SDL_FreeSurface(surface);
     int w, h;
     SDL_QueryTexture(texture, NULL, NULL, &w, &h);
-    SDL_SetRenderDrawColor(renderer, 30, 30, 30, 255);
+    SDL_SetRenderDrawColor(renderer, scolor("BackgroundColor", 0), scolor("BackgroundColor", 1), scolor("BackgroundColor", 2), 255);
     SDL_Rect bgRect{ sint("posX"), sint("posY"), w + 2 * sint("border"), h + 2 * sint("border") };
     SDL_RenderFillRect(renderer, &bgRect);
     SDL_Rect textRect{ sint("posX") + sint("border"), sint("posY") + sint("border"), w, h };
@@ -571,125 +617,348 @@ string lower(string str) {
     return data;
 }
 
+char GetOpenChar() {
+    DWORD vk = sdword("trigger");
+    int flags = sint("triggerFlags");
+    BYTE keyboardState[256] = { 0 };
+    keyboardState[vk] = 0x80;
+#define SET_MODIF(modif) if ((flags & modif ## _CONST) == modif ## _CONST) { keyboardState[VK_ ## modif] = 0x80; }
+    SET_MODIF(LSHIFT)
+    SET_MODIF(RSHIFT)
+    SET_MODIF(LCONTROL)
+    SET_MODIF(RCONTROL)
+#undef SET_MODIF
+#define SET_COMB_MODIF(modif) if(((flags & L ## modif ## _CONST) == L ## modif ## _CONST) && ((flags & R ## modif ## _CONST) == R ## modif ## _CONST)) { keyboardState[VK_ ## modif] = 0x80; }
+    SET_COMB_MODIF(SHIFT)
+    SET_COMB_MODIF(CONTROL)
+#undef SET_COMB_MODIF
+    WORD asciiText[2];
+    int asciiResult = ToAscii(vk, MapVirtualKeyA(vk, MAPVK_VK_TO_VSC), keyboardState, asciiText, 0);
+    asciiText[0] &= 0xFF;
+    if (asciiResult != 1 || asciiText[0] < 0x20 || asciiText[0] > 0x7E) {
+        asciiText[0] == NULL;
+    }
+    return (char)asciiText[0];
+}
+
+#define VK_N 0x4E
+#define VK_Y 0x59
+
 void KeyboardHook(DWORD keyCode, char keyChar) {
-    if (window != nullptr) {
-        if (keyChar == NULL) {
-            if (keyCode == VK_RETURN) {
-                if (lower(currentCommand) == "/set") {
-                    TimedText("Usage: /set [pos | bg | fg | border | char | showOpenChar | passUnknown | reset]", 1500);
-                }
-                else if (lower(currentCommand).rfind("/set ", 0) == 0) {
-                    string command = lower(currentCommand.substr(5));
-                    if (command.rfind("pos", 0) == 0) {
-                        smatch match;
-                        if (regex_match(command, match, regex("pos (x|y) (set|move) ([0-9]+)"))) {
-                            bool move = match.str(2) == "move";
-                            bool error = false;
-                            int dist;
-                            try {
-                                dist = stoi(match.str(3));
-                            }
-                            catch (...) {
-                                TimedText("Usage: /set pos [x | y] [set | move] <distance>", 1500);
-                                error = true;
-                            }
-                            if (!error) {
-                                if (match.str(1) == "x") {
-                                    if (move) {
-                                        state["posX"] = sint("posX") + dist;
-                                    }
-                                    else {
-                                        state["posX"] = dist;
-                                    }
-                                }
-                                else {
-                                    if (move) {
-                                        state["posY"] = sint("posY") + dist;
-                                    }
-                                    else {
-                                        state["posY"] = dist;
-                                    }
-                                }
-                            }
-                        }
-                        else {
-                            TimedText("Usage: /set pos [x | y] [set | move] <distance>", 1500);
-                        }
-                    }
-                    else if (command.rfind("bg", 0) == 0) {
-                        smatch match;
-                        if (regex_match(command, match, regex("bg #?([0-9a-f]{6})"))) {
-                            stringstream hexStream;
-                            hexStream << hex << match.str(1);
-                            unsigned int rgb;
-                            hexStream >> rgb;
-                            int blue = rgb & 255;
-                            int green = (rgb >> 8) & 255;
-                            int red = (rgb >> 16) & 255;
-                            state["BackgroundColor"][0] = red;
-                            state["BackgroundColor"][1] = green;
-                            state["BackgroundColor"][2] = blue;
-                        }
-                        else {
-                            TimedText("Usage: /set bg <hex rgb color>", 1500);
-                        }
-                    }
-                    else if (command.rfind("fg", 0) == 0) {
-                        smatch match;
-                        if (regex_match(command, match, regex("fg #?([0-9a-f]{8})"))) {
-                            stringstream hexStream;
-                            hexStream << hex << match.str(1);
-                            unsigned int rgb;
-                            hexStream >> rgb;
-                            int blue = rgb & 255;
-                            int green = (rgb >> 8) & 255;
-                            int red = (rgb >> 16) & 255;
-                            int alpha = (rgb >> 24) & 255;
-                            state["TextColor"][0] = red;
-                            state["TextColor"][1] = green;
-                            state["TextColor"][2] = blue;
-                            state["TextColor"][3] = alpha;
-                        }
-                        else {
-                            TimedText("Usage: /set bg <hex rgb color>", 1500);
-                        }
-                    }
-                    else if (command.rfind("border", 0) == 0) {
-
-                    }
-                    else if (command.rfind("char", 0) == 0) {
-
-                    }
-                    else if (command.rfind("showOpenChar", 0) == 0) {
-
-                    }
-                    else if (command.rfind("passUnknown", 0) == 0) {
-
-                    }
-                    else if (command.rfind("reset", 0) == 0) {
-
-                    }
-                }
-                else {
-                    Type(currentCommand.c_str());
-                }
-                DestroySDLWindow();
+    if (window != nullptr && !hasTimer) {
+        if (currentState == CurrentState::CONFIRM_CLEAR) {
+            if (keyCode == VK_N) {
+                TimedText("Operation Canceled!", timeout);
+                currentState = CurrentState::DEFAULT;
             }
-            else if (keyCode == VK_BACK && currentCommand.length() > 0) {
-                currentCommand = currentCommand.substr(0, currentCommand.length() - 1);
-                RenderText(currentCommand.c_str());
+            else if (keyCode == VK_Y) {
+                state["commands"] = { };
+                SaveState();
+                TimedText("All Commands Cleared!", timeout);
+                currentState = CurrentState::DEFAULT;
             }
         }
-        else {
-            currentCommand += keyChar;
-            RenderText(currentCommand.c_str());
+        else if (currentState == CurrentState::CONFIRM_IMPORT) {
+            if (keyCode == VK_N) {
+                TimedText("Operation Canceled!", timeout);
+                currentState = CurrentState::DEFAULT;
+            }
+            else if (keyCode == VK_Y) {
+                PWSTR path = NULL;
+                SHGetKnownFolderPath(FOLDERID_RoamingAppData, 0, 0, &path);
+                wstringstream ss;
+                ss << path << TEXT("\\.minecraft\\shortcommands.cfg.json");
+                CoTaskMemFree(static_cast<void*>(path));
+                string pathStr = wstring_convert<codecvt_utf8<wchar_t>, wchar_t>().to_bytes(ss.str());
+                ifstream inStream(pathStr.c_str());
+                if (inStream.good()) {
+                    json importJson;
+                    inStream >> importJson;
+                    for (auto& el : importJson["shortcuts"].items()) {
+                        state["commands"][el.key()] = el.value();
+                    }
+                    SaveState();
+                    TimedText("Import Complete!", timeout);
+                }
+                else {
+                    TimedText("Error: Cannot Find ShortCommands Config!", timeout);
+                }
+                currentState = CurrentState::DEFAULT;
+            }
+        }
+        else if (currentState == CurrentState::CONFIRM_RESET) {
+            if (keyCode == VK_N) {
+                TimedText("Operation Canceled!", timeout);
+                currentState = CurrentState::DEFAULT;
+            }
+            else if (keyCode == VK_Y) {
+                map<string, string> commands;
+                for (auto& el : state["commands"].items()) {
+                    commands.emplace(el.key(), el.value());
+                }
+                remove("data.json");
+                LoadState();
+                for (auto& el : commands) {
+                    state["commands"][el.first] = el.second;
+                }
+                SaveState();
+                TimedText("All Settings Reset!", timeout);
+                currentState = CurrentState::DEFAULT;
+            }
+        }
+        else if (currentState == CurrentState::COPY_OPEN_CHAR) {
+            if (keyCode == VK_N) {
+                state["copyOpenChar"] = false;
+                SaveState();
+                TimedText("N", timeout);
+                currentState = CurrentState::DEFAULT;
+            }
+            else if (keyCode == VK_Y) {
+                state["copyOpenChar"] = true;
+                SaveState();
+                TimedText("Y", timeout);
+                currentState = CurrentState::DEFAULT;
+            }
+        }
+        else if (currentState == CurrentState::SET_OPEN_CHAR) {
+            string displayText;
+            int kbState = GetState();
+#define UpdateDisplayText(modif) if((kbState & modif ## _CONST) == modif ## _CONST) { displayText += #modif; displayText += " + ";  }
+            UpdateDisplayText(LSHIFT)
+            UpdateDisplayText(RSHIFT)
+            UpdateDisplayText(LCONTROL)
+            UpdateDisplayText(RCONTROL)
+#undef UpdateDisplayText
+            if (keyChar == NULL) {
+                if (displayText.empty()) {
+                    RenderText("Enter New Open Key");
+                }
+                else {
+                    RenderText(displayText.substr(0, displayText.length()-3).c_str());
+                }
+            }
+            else {
+                state["trigger"] = keyCode;
+                state["triggerFlags"] = kbState;
+                SaveState();
+                displayText += GetOpenChar();
+                TimedText(displayText.c_str(), timeout);
+                currentState = CurrentState::DEFAULT;
+            }
+        }
+        else if (currentState == CurrentState::QUIT) {
+            HANDLE quitEvent = OpenEvent(EVENT_MODIFY_STATE, FALSE, QUIT_EVENT_NAME);
+            if (quitEvent != NULL && quitEvent != INVALID_HANDLE_VALUE) {
+                SetEvent(quitEvent);
+            }
+        }
+        else if (currentState == CurrentState::DEFAULT) {
+            if (keyChar == NULL) {
+                if (keyCode == VK_RETURN) {
+                    if (lower(currentCommand) == "/set") {
+                        TimedText("Usage: /set [pos | bg | fg | border | reset | openchar | copyOpenChar]", timeout);
+                    }
+                    else if (lower(currentCommand).rfind("/set ", 0) == 0) {
+                        string command = lower(currentCommand.substr(5));
+                        if (command.rfind("pos", 0) == 0) {
+                            smatch match;
+                            if (regex_match(command, match, regex("pos (x|y) (set|move) (\\-?[0-9]{1,4})"))) {
+                                bool move = match.str(2) == "move";
+                                bool error = false;
+                                int dist;
+                                try {
+                                    dist = stoi(match.str(3));
+                                }
+                                catch (...) {
+                                    TimedText("Usage: /set pos [x | y] [set | move] <distance>", timeout);
+                                    error = true;
+                                }
+                                if (!error) {
+                                    if (match.str(1) == "x") {
+                                        if (move) {
+                                            state["posX"] = sint("posX") + dist;
+                                        }
+                                        else {
+                                            state["posX"] = dist;
+                                        }
+                                    }
+                                    else {
+                                        if (move) {
+                                            state["posY"] = sint("posY") + dist;
+                                        }
+                                        else {
+                                            state["posY"] = dist;
+                                        }
+                                    }
+                                    SaveState();
+                                }
+                            }
+                            else {
+                                TimedText("Usage: /set pos [x | y] [set | move] <distance>", timeout);
+                            }
+                        }
+                        else if (command.rfind("bg", 0) == 0) {
+                            smatch match;
+                            if (regex_match(command, match, regex("bg #?([0-9a-f]{6})"))) {
+                                stringstream hexStream;
+                                hexStream << hex << match.str(1);
+                                unsigned int rgb;
+                                hexStream >> rgb;
+                                int blue = rgb & 255;
+                                int green = (rgb >> 8) & 255;
+                                int red = (rgb >> 16) & 255;
+                                state["BackgroundColor"][0] = red;
+                                state["BackgroundColor"][1] = green;
+                                state["BackgroundColor"][2] = blue;
+                                SaveState();
+                            }
+                            else {
+                                TimedText("Usage: /set bg <hex rgb color>", timeout);
+                            }
+                        }
+                        else if (command.rfind("fg", 0) == 0) {
+                            smatch match;
+                            if (regex_match(command, match, regex("fg #?([0-9a-f]{8})"))) {
+                                stringstream hexStream;
+                                hexStream << hex << match.str(1);
+                                unsigned int rgb;
+                                hexStream >> rgb;
+                                int blue = rgb & 255;
+                                int green = (rgb >> 8) & 255;
+                                int red = (rgb >> 16) & 255;
+                                int alpha = (rgb >> 24) & 255;
+                                state["TextColor"][0] = red;
+                                state["TextColor"][1] = green;
+                                state["TextColor"][2] = blue;
+                                state["TextColor"][3] = alpha;
+                                SaveState();
+                            }
+                            else {
+                                TimedText("Usage: /set fg <hex rgb color>", timeout);
+                            }
+                        }
+                        else if (command.rfind("border", 0) == 0) {
+                            smatch match;
+                            if (regex_match(command, match, regex("border ([0-9]{1,4})"))) {
+                                bool error = false;
+                                int border;
+                                try {
+                                    border = stoi(match.str(1));
+                                }
+                                catch (...) {
+                                    TimedText("Usage: /set border <width>", timeout);
+                                    error = true;
+                                }
+                                if (!error) {
+                                    state["border"] = border;
+                                    SaveState();
+                                }
+                            }
+                            else {
+                                TimedText("Usage: /set border <width>", timeout);
+                            }
+                        }
+                        else if (command.rfind("reset", 0) == 0) {
+                            currentState = CurrentState::CONFIRM_RESET;
+                            RenderText("Confirm Reset? [Y/N]");
+                        }
+                        else if (command.rfind("openchar", 0) == 0) {
+                            currentState = CurrentState::SET_OPEN_CHAR;
+                            RenderText("Enter New Open Key");
+                        }
+                        else if (command.rfind("copyOpenChar", 0) == 0) {
+                            currentState = CurrentState::COPY_OPEN_CHAR;
+                            RenderText("Copy Open Char? [Y/N]");
+                        }
+                        else {
+                            TimedText("Usage: /set [pos | bg | fg | border | reset | openchar | copyOpenChar]", timeout);
+                        }
+                    }
+                    else if (lower(currentCommand) == "/command") {
+                        TimedText("Usage: /set [add | remove | clear]", timeout);
+                    }
+                    else if (lower(currentCommand).rfind("/command ", 0) == 0) {
+                        string command = lower(currentCommand.substr(9));
+                        if (command.rfind("add", 0) == 0) {
+                            smatch match;
+                            string subStrCmd = currentCommand.substr(12);
+                            if (regex_match(subStrCmd, match, regex(" ([^ ]+) (.+)"))) {
+                                string shortcut = lower(match.str(1));
+                                string command = match.str(2);
+                                auto commands = state["commands"];
+                                if (commands.contains(shortcut)) {
+                                    commands.erase(shortcut);
+                                }
+                                commands[shortcut] = command;
+                                SaveState();
+                            }
+                            else {
+                                TimedText("Usage: /command add <shortcut> <command>", timeout);
+                            }
+                        }
+                        else if (command.rfind("remove", 0) == 0) {
+                            smatch match;
+                            if (regex_match(command, match, regex("remove ([^ ]+)"))) {
+                                string shortcut = lower(match.str(1));
+                                string command = match.str(2);
+                                auto commands = state["commands"];
+                                if (commands.contains(shortcut)) {
+                                    commands.erase(shortcut);
+                                }
+                                SaveState();
+                            }
+                            else {
+                                TimedText("Usage: /command remove <shortcut>", timeout);
+                            }
+                        }
+                        else if (command.rfind("clear", 0) == 0) {
+                            currentState = CurrentState::CONFIRM_CLEAR;
+                            RenderText("Confirm Clear? [Y/N]");
+                        }
+                    }
+                    else if (lower(currentCommand).rfind("/import", 0) == 0 && lower(currentCommand).rfind("/import ", 0) != 0) {
+                        currentState = CurrentState::CONFIRM_IMPORT;
+                        RenderText("Confirm Import? [Y/N]");
+                    }
+                    else if (lower(currentCommand).rfind("/quit", 0) == 0 && lower(currentCommand).rfind("/quit ", 0) != 0) {
+                        currentState = CurrentState::QUIT;
+                        RenderText("Press Any Key To Quit...");
+                    }
+                    else {
+                        string text = currentCommand;
+                        for (auto& el : state["commands"].items()) {
+                            if (el.key() == text) {
+                                text = el.value();
+                                break;
+                            }
+                        }
+                        if (!text.empty()) {
+                            Type(text.c_str());
+                        }
+                    }
+                    DestroySDLWindow();
+                }
+                else if (keyCode == VK_BACK && currentCommand.length() > 0) {
+                    currentCommand = currentCommand.substr(0, currentCommand.length() - 1);
+                    RenderText(currentCommand.c_str());
+                }
+            }
+            else {
+                currentCommand += keyChar;
+                RenderText(currentCommand.c_str());
+            }
         }
         cancelEvent();
     }
     else if (keyCode == sdword("trigger") && GetState() == sint("triggerFlags") && IsLunarRunning()) {
         currentCommand.clear();
-        CreateSDLWindow();
-        RenderText("");
+        if (sbool("copyOpenChar")) {
+            char openChar = GetOpenChar();
+            if (openChar != NULL) {
+                currentCommand.insert(currentCommand.begin(), openChar);
+            }
+        }
+        RenderText(currentCommand.c_str());
         cancelEvent();
     }
 }
