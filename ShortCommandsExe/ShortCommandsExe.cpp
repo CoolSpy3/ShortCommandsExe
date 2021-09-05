@@ -415,6 +415,7 @@ void LoadState() {
             { "TextColor", { 255, 255, 255, 255 } },
             { "BackgroundColor", { 30, 30, 30 } },
             { "copyOpenChar", true },
+            { "requireLunar", false },
             { "commands", {} }
         };
         SaveState();
@@ -526,7 +527,7 @@ int CALLBACK WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR pCmdLin
 int timeout = 2000;
 
 enum CurrentState {
-    DEFAULT, CONFIRM_CLEAR, CONFIRM_IMPORT, CONFIRM_RESET, COPY_OPEN_CHAR, SET_OPEN_CHAR, QUIT
+    DEFAULT, CONFIRM_CLEAR, CONFIRM_IMPORT, CONFIRM_RESET, COPY_OPEN_CHAR, REQUIRE_LUNAR, SET_OPEN_CHAR, QUIT
 };
 
 CurrentState currentState = CurrentState::DEFAULT;
@@ -658,6 +659,13 @@ char GetOpenChar() {
 #define VK_Y 0x59
 
 void KeyboardHook(DWORD keyCode, char keyChar) {
+    if (sbool("requireLunar") && !IsLunarRunning()) {
+        HANDLE quitEvent = OpenEvent(EVENT_MODIFY_STATE, FALSE, QUIT_EVENT_NAME);
+        if (quitEvent != NULL && quitEvent != INVALID_HANDLE_VALUE) {
+            SetEvent(quitEvent);
+        }
+        return;
+    }
     if (window != nullptr && !hasTimer) {
         if (currentState == CurrentState::CONFIRM_CLEAR) {
             if (keyCode == VK_N) {
@@ -733,6 +741,20 @@ void KeyboardHook(DWORD keyCode, char keyChar) {
                 currentState = CurrentState::DEFAULT;
             }
         }
+        else if (currentState == CurrentState::REQUIRE_LUNAR) {
+            if (keyCode == VK_N) {
+                state["requireLunar"] = false;
+                SaveState();
+                TimedText("N", timeout);
+                currentState = CurrentState::DEFAULT;
+            }
+            else if (keyCode == VK_Y) {
+                state["requireLunar"] = true;
+                SaveState();
+                TimedText("Y", timeout);
+                currentState = CurrentState::DEFAULT;
+            }
+        }
         else if (currentState == CurrentState::SET_OPEN_CHAR) {
             string displayText;
             int kbState = GetState();
@@ -769,7 +791,7 @@ void KeyboardHook(DWORD keyCode, char keyChar) {
             if (keyChar == NULL) {
                 if (keyCode == VK_RETURN) {
                     if (lower(currentCommand) == "/set") {
-                        TimedText("Usage: /set [pos | bg | fg | border | reset | openchar | copyOpenChar]", timeout);
+                        TimedText("Usage: /set [pos | bg | fg | border | reset | openchar | copyOpenChar | requireLunar]", timeout);
                     }
                     else if (lower(currentCommand).rfind("/set ", 0) == 0) {
                         string command = lower(currentCommand.substr(5));
@@ -879,12 +901,16 @@ void KeyboardHook(DWORD keyCode, char keyChar) {
                             currentState = CurrentState::SET_OPEN_CHAR;
                             RenderText("Enter New Open Key");
                         }
-                        else if (command.rfind("copyOpenChar", 0) == 0) {
+                        else if (command.rfind("copyopenchar", 0) == 0) {
                             currentState = CurrentState::COPY_OPEN_CHAR;
                             RenderText("Copy Open Char? [Y/N]");
                         }
+                        else if (command.rfind("requirelunar", 0) == 0) {
+                        currentState = CurrentState::REQUIRE_LUNAR;
+                        RenderText("Require Lunar? [Y/N]");
+                        }
                         else {
-                            TimedText("Usage: /set [pos | bg | fg | border | reset | openchar | copyOpenChar]", timeout);
+                            TimedText("Usage: /set [pos | bg | fg | border | reset | openchar | copyOpenChar | requireLunar]", timeout);
                         }
                     }
                     else if (lower(currentCommand) == "/command") {
@@ -963,7 +989,7 @@ void KeyboardHook(DWORD keyCode, char keyChar) {
         }
         cancelEvent();
     }
-    else if (keyCode == sdword("trigger") && GetState() == sint("triggerFlags") && IsLunarRunning()) {
+    else if (keyCode == sdword("trigger") && GetState() == sint("triggerFlags")) {
         currentCommand.clear();
         if (sbool("copyOpenChar")) {
             char openChar = GetOpenChar();
